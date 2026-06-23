@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | ドキュメントID | 02_basic_design |
-| バージョン | 1.3 |
+| バージョン | 1.4 |
 | 最終更新 | 2026-06-24 |
 | ステータス | ドラフト |
 
@@ -490,23 +490,49 @@ prompt_context = {
 | `RunLogs` | **追記蓄積** | バッチ実行記録。TTLで180日後に自動削除 |
 | `Portfolio` | **フルUpsert** | Phase1は `config.yaml` から毎回読み込んで上書き。Phase2でユーザ入力による動的更新に移行 |
 
-### 10.2 PriceHistory の増分取得フロー
+### 10.2 データ取得方式：初期ロードと週次更新の使い分け
+
+J-Quantsのデータ取得には「CSV一括取得」と「REST API（V2）」の2方式がある。**本システムは両方を目的に応じて使い分ける。** なお、全実装はV2 APIを前提とする。
+
+| 局面 | 方式 | 対象 | 理由 |
+|---|---|---|---|
+| **初期ロード（初回のみ）** | **CSV一括取得** | PriceHistory（過去5年分）/ Fundamentals / Securities | 500万件超のデータをREST APIで取ると60件/分の上限で数日かかる。CSVなら数時間で完了する |
+| **週次更新（毎週）** | **REST API V2** | PriceHistory（前週分）/ Fundamentals（新開示分）/ Securities（差分） | 週1回の増分であれば数百〜数千件。API呼び出しで十分 |
+
+**この理由から、FreeプランはCSV一括取得不可のため初期ロードの段階で詰まり、本番運用不可となる。Light（月1,650円）以上が必須。**
+
+#### 初期ロード手順（一度だけ実行）
+
+```
+1. J-Quantsダッシュボードから CSV一括ダウンロード
+     株価四本値（5年分）
+     財務情報（5年分）
+     上場銘柄一覧
+
+2. ローカルでCSVを前処理（文字コード変換・型変換）
+
+3. DynamoDB BatchWriteItem でPriceHistory / Fundamentals / Securities に一括投入
+   （専用の初期ロードスクリプトを lambda_src/scripts/initial_load.py として作成）
+
+4. RunLogs に初期ロード完了日時を記録
+   （以降の週次バッチはこの日時を起点に増分取得する）
+```
+
+#### PriceHistory 週次更新フロー（毎週）
 
 ```
 lambda-ingest 起動
   ↓
 RunLogs から前回 ingest の成功日時を取得
   ↓
-J-Quants API: /v2/prices/daily_quotes
+J-Quants REST API V2: GET /v2/prices/daily_quotes
   パラメータ: from = 前回取得日 + 1日
              to   = バッチ実行日
   ↓
-取得データを PriceHistory に BatchWriteItem（追加のみ）
+取得データを PriceHistory に BatchWriteItem（追加のみ・上書きなし）
   ↓
 RunLogs に今回の取得範囲・件数を記録
 ```
-
-初回実行時は J-Quants Light（5年分）の最古日付から取得する。
 
 ### 10.3 データ削除の方針
 
