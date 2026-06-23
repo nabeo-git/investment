@@ -3,8 +3,8 @@
 | 項目 | 内容 |
 |---|---|
 | ドキュメントID | 03_database_design |
-| バージョン | 1.0 |
-| 最終更新 | 2026-06-23 |
+| バージョン | 1.1 |
+| 最終更新 | 2026-06-24 |
 | ステータス | ドラフト |
 
 ---
@@ -41,57 +41,95 @@
 ## 3. テーブル詳細
 
 ### 3.1 `Securities`（銘柄マスタ）
-| 属性 | 型 | キー | 説明 |
-|---|---|---|---|
-| ticker | String | PK | 証券コード（例：`7203`） |
-| asset_class | String | SK | `jp_stock` / `us_stock` / `etf` / `reit` / `bond` / `gold` |
-| name | String | | 銘柄名 |
-| market | String | | 市場（`TSE`/`NYSE`等） |
-| sector | String | | 業種 |
-| currency | String | | 通貨（`JPY`/`USD`） |
-| unit_size | Number | | 単元株数（日本株は通常100） |
-| listed_date | String | | 上場日（ISO 8601） |
-| updated_at | String | | 最終更新日時 |
+> ソース：J-Quants `Listed Issue Master` API（`/v2/listed/info`）
 
-- 容量見積：約5,000銘柄（日本株4000＋ETF等）×0.5KB ≒ 2.5MB
-- GSI: なし（PKでアクセス）
+| 属性 | 型 | キー | API元フィールド | 説明 |
+|---|---|---|---|---|
+| ticker | String | PK | `Code` | 証券コード（例：`86970`） |
+| asset_class | String | SK | （派生） | `jp_stock` / `us_stock` / `etf` / `reit` / `bond` / `gold` |
+| name_ja | String | | `CoName` | 銘柄名（日本語） |
+| name_en | String | | `CoNameEn` | 銘柄名（英語） |
+| sector_17_code | String | | `S17` | 17業種コード |
+| sector_17_name | String | | `S17Nm` | 17業種名 |
+| sector_33_code | String | | `S33` | 33業種コード |
+| sector_33_name | String | | `S33Nm` | 33業種名 |
+| scale_category | String | | `ScaleCat` | 規模区分（TOPIX Large70等） |
+| market_code | String | | `Mkt` | 市場コード |
+| market_name | String | | `MktNm` | 市場名 |
+| margin_code | String | | `Mrgn` | 信用区分コード |
+| currency | String | | （固定） | `JPY`（日本株） |
+| unit_size | Number | | （固定） | `100`（単元株数、日本株は通常100） |
+| updated_at | String | | `Date` | データ取得日時 |
+
+- 容量見積：約5,000銘柄 × 0.5KB ≒ 2.5MB
+- GSI: なし（PK単独アクセス）
+- **注意**：`Date` はマスタ取得日時であり上場日ではない。上場日は別途取得要。
 
 ### 3.2 `PriceHistory`（株価ヒストリカル）
-| 属性 | 型 | キー | 説明 |
-|---|---|---|---|
-| ticker | String | PK | 証券コード |
-| date | String | SK | 取引日（`YYYY-MM-DD`） |
-| open | Number | | 始値 |
-| high | Number | | 高値 |
-| low | Number | | 安値 |
-| close | Number | | 終値 |
-| volume | Number | | 出来高 |
-| adj_close | Number | | 調整後終値 |
-| ttl | Number | | TTL（5年経過後自動削除） |
-| missing_flag | Boolean | | 欠損フラグ |
+> ソース：J-Quants `Stock Prices (OHLC)` API（`/v2/prices/daily_quotes`）
+
+| 属性 | 型 | キー | API元フィールド | 説明 |
+|---|---|---|---|---|
+| ticker | String | PK | `Code` | 証券コード |
+| date | String | SK | `Date` | 取引日（`YYYY-MM-DD`） |
+| open | Number | | `O` | 始値 |
+| high | Number | | `H` | 高値 |
+| low | Number | | `L` | 安値 |
+| close | Number | | `C` | 終値 |
+| volume | Number | | `Vo` | 出来高 |
+| turnover_value | Number | | `Va` | 売買代金 |
+| adj_factor | Number | | `AdjFactor` | 調整係数（分割・合併考慮） |
+| adj_close | Number | | `AdjC` | 調整後終値（スコアリングで使用） |
+| adj_volume | Number | | `AdjVo` | 調整後出来高 |
+| ttl | Number | | （計算） | TTL（取得日+5年のUnixtime） |
+| missing_flag | Boolean | | （派生） | 欠損フラグ |
 
 - 容量見積：4,000銘柄 × 252営業日 × 3年 × 0.2KB ≒ 約600MB（無料枠25GB内）
 - TTL：5年（不要な過去データは自動削除）
 - GSI: なし（PK+SK範囲クエリで十分）
+- **注意**：前場/後場別（M*/A*プレフィックス列）はPremium限定。Phase1では日通しデータのみ保管。
 
 ### 3.3 `Fundamentals`（財務・配当データ）
-| 属性 | 型 | キー | 説明 |
-|---|---|---|---|
-| ticker | String | PK | 証券コード |
-| fiscal_period | String | SK | 会計期（`2025Q4` 等） |
-| as_of_date | String | | 発表日（ルックアヘッド回避用） |
-| per | Number | | PER |
-| pbr | Number | | PBR |
-| dividend_yield | Number | | 配当利回り |
-| dividend_per_share | Number | | 1株配当 |
-| payout_ratio | Number | | 配当性向 |
-| equity_ratio | Number | | 自己資本比率 |
-| roe | Number | | ROE |
-| consecutive_dividend_years | Number | | 連続増配年数 |
-| missing_flag | Boolean | | 欠損フラグ |
+> ソース：J-Quants `Financial Data` API（`/v2/fins/statements`）  
+> **全プランで取得可能。PER/PBRは直接提供されないため、EPS・BPS + 当日終値から計算する。**
 
-- 容量見積：5,000銘柄 × 4四半期 × 5年 × 1KB ≒ 約100MB
+| 属性 | 型 | キー | API元フィールド | 説明 |
+|---|---|---|---|---|
+| ticker | String | PK | `Code` | 証券コード |
+| disc_date | String | SK | `DiscDate` | 開示日（`YYYY-MM-DD`）。**as_of_date**として機能 |
+| doc_type | String | | `DocType` | 開示種別（`FYFinancialStatements_*`, `1QFinancialStatements_*` 等） |
+| period_type | String | | `CurPerType` | 期間種別（`FY` / `1Q` / `2Q` / `3Q`） |
+| period_start | String | | `CurPerSt` | 期間開始日 |
+| period_end | String | | `CurPerEn` | 期間終了日 |
+| fy_start | String | | `CurFYSt` | 当該年度開始日 |
+| fy_end | String | | `CurFYEn` | 当該年度終了日 |
+| sales | Number | | `Sales` | 売上高 |
+| operating_profit | Number | | `OP` | 営業利益 |
+| net_profit | Number | | `NP` | 純利益 |
+| eps | Number | | `EPS` | 1株当たり利益（PER計算に使用） |
+| bps | Number | | `BPS` | 1株当たり純資産（PBR計算に使用） |
+| total_assets | Number | | `TA` | 総資産 |
+| equity | Number | | `Eq` | 純資産 |
+| equity_ratio | Number | | `EqAR` | 自己資本比率（直接取得可） |
+| cfo | Number | | `CFO` | 営業CF |
+| div_fy_actual | Number | | `DivFY` | 当期実績配当（通期） |
+| div_forecast_ann | Number | | `FDivAnn` | 当期予想配当（年間合計、配当利回り計算に使用） |
+| payout_ratio_forecast | Number | | `FPayoutRatioAnn` | 予想配当性向 |
+| sales_forecast | Number | | `FSales` | 当期予想売上 |
+| np_forecast | Number | | `FNP` | 当期予想純利益 |
+| eps_forecast | Number | | `FEPS` | 当期予想EPS |
+| shares_outstanding | Number | | `ShOutFY` | 発行済株式数 |
+| consecutive_dividend_years | Number | | （計算） | 連続増配年数（過去`DivFY`の時系列から算出） |
+| per_calc | Number | | （計算） | PER（取得時の終値 ÷ EPS で計算、格納） |
+| pbr_calc | Number | | （計算） | PBR（取得時の終値 ÷ BPS で計算、格納） |
+| dividend_yield_calc | Number | | （計算） | 配当利回り（FDivAnn ÷ 取得時終値 で計算） |
+| missing_flag | Boolean | | （派生） | 欠損フラグ |
+
+- 容量見積：5,000銘柄 × 4四半期 × 5年 × 1.5KB ≒ 約150MB
 - GSI: なし
+- **PER・PBR・配当利回りの計算タイミング**：`lambda-ingest` が `DiscDate` 当日（または翌営業日）の終値と組み合わせて計算し保管する
+- **連続増配年数の計算**：`DivFY` の時系列を過去5年分（Light）検索し、増配継続しているか判定
+- **ルックアヘッド回避**：スクリーニング・スコアリングでは、`disc_date <= バッチ実行日` のレコードのみ参照する
 
 ### 3.4 `Portfolio`（自分の保有）
 | 属性 | 型 | キー | 説明 |
