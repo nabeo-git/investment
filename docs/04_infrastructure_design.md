@@ -62,6 +62,7 @@ DynamoDB       DynamoDB        Bedrock          S3 reports
 
 ### 2.2 利用サービス一覧
 
+**AWSコスト**
 | サービス | 用途 | 想定コスト/月 |
 |---|---|---|
 | Lambda × 4 | バッチ処理 | 無料枠内（0円） |
@@ -73,9 +74,24 @@ DynamoDB       DynamoDB        Bedrock          S3 reports
 | EventBridge Scheduler | 週次起動 | 無料枠内 |
 | SNS（メール通知） | 通知 | 無料枠内 |
 | CloudWatch Logs | ログ | 無料枠内 |
-| **合計** | | **〜110円/月** |
+| **AWSコスト合計** | | **〜110円/月** |
 
-※ Secrets Manager の $0.40/シークレット が支配的。コスト削減したい場合は SSM Parameter Store の SecureString で代替可能（0円）。
+**データ取得コスト（AWSとは別枠）**
+| サービス | 用途 | 月額 |
+|---|---|---|
+| J-Quants Light（本番推奨） | 日本株データ取得（最新・5年分） | **1,650円** |
+| J-Quants Standard（任意） | 10年分・地合いデータ追加 | 3,300円（必要になった時点で移行） |
+| EDINET API | 有価証券報告書・決算短信 | **0円（無料）** |
+| **データコスト合計** | | **〜1,650円/月（Light採用時）** |
+
+**月次総コスト目安**
+| 構成 | 月額 |
+|---|---|
+| 開発中（J-Quants Free） | 〜110円（AWSのみ） |
+| **本番最小（J-Quants Light）** | **〜1,760円** |
+| 本番強化（J-Quants Standard） | 〜3,410円 |
+
+※ Secrets Manager → SSM Parameter Store SecureStringに変更で約80円削減可。
 
 ---
 
@@ -160,7 +176,7 @@ terraform {
 - s3:GetObject
   Resource: config bucket/config.yaml
 - secretsmanager:GetSecretValue
-  Resource: jquants-credentials
+  Resource: jquants-api-key
 - logs:CreateLogStream, PutLogEvents
 ```
 
@@ -218,14 +234,17 @@ terraform {
 
 | Secret名 | 種別 | 内容 | 投入方法 |
 |---|---|---|---|
-| `investment/jquants-credentials` | JSON | {mail, password, refresh_token} | 手動（AWS CLI） |
+| `investment/jquants-api-key` | String | J-Quants V2 APIキー（ダッシュボードで発行） | 手動（AWS CLI） |
 | `investment/google-drive-sa-key` | JSON | GCPサービスアカウント鍵JSON | 手動（AWS CLI） |
+
+> **V2 API注意**：2025年12月以降の新規登録はV2（APIキー方式）のみ。旧方式の `{mail, password, refresh_token}` JSON形式は使用しないこと。
 
 ### 5.1 投入手順例
 ```powershell
+# J-Quants V2 APIキー（ダッシュボードの「APIキー」欄からコピー）
 aws secretsmanager create-secret `
-  --name investment/jquants-credentials `
-  --secret-string (Get-Content jquants.json -Raw)
+  --name investment/jquants-api-key `
+  --secret-string "your-api-key-string-here"
 ```
 
 ### 5.2 config.yaml アップロード
@@ -287,7 +306,7 @@ terraform plan -out=tfplan
 terraform apply tfplan
 
 # 4. Secrets / configを手動投入
-aws secretsmanager create-secret --name investment/jquants-credentials --secret-string @jquants.json
+aws secretsmanager create-secret --name investment/jquants-api-key --secret-string "your-v2-api-key"
 aws secretsmanager create-secret --name investment/google-drive-sa-key --secret-string @sa-key.json
 aws s3 cp config.yaml s3://investment-config-dev/config.yaml
 

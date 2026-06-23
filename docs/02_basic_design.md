@@ -104,7 +104,8 @@ CloudWatch Logs (全Lambda) → Metric Filter (Error) → SNS
 data_sources:
   jquants:
     enabled: true
-    endpoint: https://api.jquants.com
+    endpoint: https://api.jquants.com/v2    # V2 API（2025年12月以降の新規登録はV2必須）
+    plan: light                              # free / light / standard / premium
   edgar:    # Phase2
     enabled: false
   fred:     # Phase2
@@ -159,9 +160,10 @@ notification:
 ### 5.1 アダプタパターン
 ```
 DataSourceAdapter (interface)
-  ├ JQuantsAdapter      (Phase1)
-  ├ EdgarAdapter        (Phase2)
-  ├ FredAdapter         (Phase2)
+  ├ JQuantsV2Adapter    (Phase1：V2 API/APIキー方式)
+  ├ EdinetAdapter       (Phase1：有価証券報告書・決算短信、無料)
+  ├ EdgarAdapter        (Phase2：米国株財務)
+  ├ FredAdapter         (Phase2：マクロ・為替)
   └ YFinanceAdapter     (Phase2、補完用)
 ```
 
@@ -382,7 +384,7 @@ prompt_context = {
     "equity_ratio": 62.0,
     "avg_volume": 1800,
     "as_of_date": "2026-06-26",
-    # IRサマリ（TDnet/適時開示のテキストをRAGで要約）
+    # IRサマリ（EDINET APIで取得した有価証券報告書・決算短信をRAGで要約）
     "ir_summary": "2026年3月期：売上高+5.2%、営業利益+8.1%。...",
 }
 ```
