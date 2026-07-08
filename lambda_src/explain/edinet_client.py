@@ -5,18 +5,33 @@ API: https://disclosure.edinet-fsa.go.jp/api/v2/
 """
 import io
 import logging
+import os
 import re
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
 from typing import Optional
 
+import boto3
 import requests
 
 logger = logging.getLogger(__name__)
 
 EDINET_BASE = "https://disclosure.edinet-fsa.go.jp/api/v2"
 DOC_TYPE_ANNUAL = "120"  # 有価証券報告書
+EDINET_SECRET_NAME = os.environ.get("EDINET_SECRET_NAME", "investment-dev/edinet-api-key")
+
+
+def _get_api_key() -> Optional[str]:
+    """Secrets Manager から EDINET API キーを取得する。"""
+    try:
+        client = boto3.client("secretsmanager",
+                              region_name=os.environ.get("AWS_REGION_MAIN", "ap-northeast-1"))
+        resp = client.get_secret_value(SecretId=EDINET_SECRET_NAME)
+        return resp["SecretString"].strip()
+    except Exception as e:
+        logger.warning(f"EDINET APIキー取得失敗: {e}")
+        return None
 
 
 class EdinetClient:
@@ -24,6 +39,12 @@ class EdinetClient:
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers["User-Agent"] = "investment-research-system/1.0"
+        api_key = _get_api_key()
+        if api_key:
+            self.session.headers["Ocp-Apim-Subscription-Key"] = api_key
+            logger.info("EDINET APIキー設定済み")
+        else:
+            logger.warning("EDINET APIキー未設定 — 認証なしで試行")
 
     def find_latest_annual_report(self, ticker: str, fy_end: Optional[str] = None) -> Optional[dict]:
         """
