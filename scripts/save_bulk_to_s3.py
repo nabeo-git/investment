@@ -30,6 +30,7 @@ log = logging.getLogger(__name__)
 REGION = "ap-northeast-1"
 ENVIRONMENT = "dev"
 BULK_START = datetime(2021, 7, 1)
+S3_BULK_PREFIX = "bulk-data"
 
 
 def _get_s3_bucket() -> str:
@@ -91,11 +92,9 @@ def main():
     args = parser.parse_args()
 
     months = all_months()
+    s3_bucket = _get_s3_bucket()
     log.info(f"=== S3アーカイブ開始 ===")
     log.info(f"  対象: {months[0]} 〜 {months[-1]}（{len(months)}ヶ月）")
-    log.info(f"  保存先: s3://{S3_BUCKET}/{S3_BULK_PREFIX}/")
-
-    s3_bucket = _get_s3_bucket()
     api_key = get_api_key()
     jq = jquantsapi.ClientV2(api_key=api_key)
     s3 = boto3.client("s3", region_name=REGION)
