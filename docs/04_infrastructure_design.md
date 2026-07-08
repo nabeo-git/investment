@@ -14,7 +14,7 @@
 ### 1.1 IaCツール
 - **Terraform**（HashiCorp Configuration Language）
 - 状態管理：S3バックエンド + DynamoDBロック
-- 環境分離：`envs/dev` と `envs/prod` の2系統（Phase1は `dev` のみで運用可）
+- 環境：`envs/dev` の1系統のみで運用（個人利用のため prod 環境は不要と判断）
 
 ### 1.2 リージョン戦略
 | 用途 | リージョン |
@@ -105,13 +105,9 @@ infra/
 ├── variables.tf                  # グローバル変数
 │
 ├── envs/
-│   ├── dev/
-│   │   ├── main.tf               # dev環境のmodule呼び出し
-│   │   ├── terraform.tfvars      # dev固有変数
-│   │   └── outputs.tf
-│   └── prod/
-│       ├── main.tf
-│       ├── terraform.tfvars
+│   └── dev/
+│       ├── main.tf               # 環境のmodule呼び出し
+│       ├── terraform.tfvars      # 変数値（gitignore）
 │       └── outputs.tf
 │
 ├── modules/
@@ -172,7 +168,7 @@ terraform {
 | タグキー | 値 | 目的 |
 |---|---|---|
 | `Project` | `InvestmentSystem` | コスト集計・リソース識別 |
-| `Environment` | `dev` / `prod` | 環境別コスト分離 |
+| `Environment` | `dev` | 環境識別 |
 | `ManagedBy` | `Terraform` | 管理方法の明示 |
 
 #### Terraformでのデフォルトタグ設定
@@ -185,7 +181,7 @@ provider "aws" {
   default_tags {
     tags = {
       Project     = "InvestmentSystem"
-      Environment = var.environment   # "dev" or "prod"
+      Environment = var.environment
       ManagedBy   = "Terraform"
     }
   }
