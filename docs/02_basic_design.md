@@ -196,7 +196,7 @@ explanation:
   temperature: 0.2
 
 notification:
-  email_to: ${ALERT_EMAIL}
+  email_to: ${SNS_SUBSCRIBER_EMAIL}  # 実際のアドレスはterraform.tfvars（gitignore）で管理
 ```
 
 ---

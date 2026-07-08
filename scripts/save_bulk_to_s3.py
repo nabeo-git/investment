@@ -29,9 +29,12 @@ log = logging.getLogger(__name__)
 
 REGION = "ap-northeast-1"
 ENVIRONMENT = "dev"
-S3_BUCKET = "investment-dev-config-YOUR_ACCOUNT_ID"
-S3_BULK_PREFIX = "bulk-data"
 BULK_START = datetime(2021, 7, 1)
+
+
+def _get_s3_bucket() -> str:
+    account_id = boto3.client("sts", region_name=REGION).get_caller_identity()["Account"]
+    return f"investment-{ENVIRONMENT}-config-{account_id}"
 
 
 def get_api_key() -> str:
@@ -52,15 +55,14 @@ def all_months() -> list[str]:
     return months
 
 
-def save_endpoint_to_s3(client, s3, endpoint: str, s3_prefix: str, months: list[str], tmpdir: str) -> int:
+def save_endpoint_to_s3(client, s3, s3_bucket: str, endpoint: str, s3_prefix: str, months: list[str], tmpdir: str) -> int:
     saved = 0
     skipped = 0
     for ym in months:
         s3_key = f"{S3_BULK_PREFIX}/{s3_prefix}/{ym}.csv.gz"
-        # 既存ファイルがあればスキップ
         try:
-            s3.head_object(Bucket=S3_BUCKET, Key=s3_key)
-            log.info(f"  既存スキップ {ym}: s3://{S3_BUCKET}/{s3_key}")
+            s3.head_object(Bucket=s3_bucket, Key=s3_key)
+            log.info(f"  既存スキップ {ym}: s3://{s3_bucket}/{s3_key}")
             skipped += 1
             continue
         except Exception:
@@ -70,8 +72,8 @@ def save_endpoint_to_s3(client, s3, endpoint: str, s3_prefix: str, months: list[
         try:
             client.download_bulk_by_endpoint(endpoint=endpoint, date=ym, output_path=path)
             size_kb = os.path.getsize(path) // 1024
-            s3.upload_file(path, S3_BUCKET, s3_key)
-            log.info(f"  保存 {ym}: {size_kb}KB → s3://{S3_BUCKET}/{s3_key}")
+            s3.upload_file(path, s3_bucket, s3_key)
+            log.info(f"  保存 {ym}: {size_kb}KB → s3://{s3_bucket}/{s3_key}")
             saved += 1
         except Exception as e:
             log.warning(f"  スキップ {ym}: {str(e)[:80]}")
@@ -93,26 +95,28 @@ def main():
     log.info(f"  対象: {months[0]} 〜 {months[-1]}（{len(months)}ヶ月）")
     log.info(f"  保存先: s3://{S3_BUCKET}/{S3_BULK_PREFIX}/")
 
+    s3_bucket = _get_s3_bucket()
     api_key = get_api_key()
     jq = jquantsapi.ClientV2(api_key=api_key)
     s3 = boto3.client("s3", region_name=REGION)
 
+    log.info(f"  保存先: s3://{s3_bucket}/{S3_BULK_PREFIX}/")
     start = time.time()
 
     with tempfile.TemporaryDirectory() as tmpdir:
         if not args.skip_fins:
             log.info("▶ Fundamentals (fins/summary) をS3に保存中...")
-            n = save_endpoint_to_s3(jq, s3, "fins/summary", "fins", months, tmpdir)
+            n = save_endpoint_to_s3(jq, s3, s3_bucket, "fins/summary", "fins", months, tmpdir)
             log.info(f"  財務: {n}ヶ月分保存完了")
 
         if not args.skip_prices:
             log.info("▶ PriceHistory (equities/bars/daily) をS3に保存中...")
-            n = save_endpoint_to_s3(jq, s3, "equities/bars/daily", "prices", months, tmpdir)
+            n = save_endpoint_to_s3(jq, s3, s3_bucket, "equities/bars/daily", "prices", months, tmpdir)
             log.info(f"  株価: {n}ヶ月分保存完了")
 
     elapsed = time.time() - start
     log.info(f"=== 完了 ({elapsed/60:.1f}分) ===")
-    log.info(f"  確認: aws s3 ls s3://{S3_BUCKET}/{S3_BULK_PREFIX}/ --recursive --region {REGION}")
+    log.info(f"  確認: aws s3 ls s3://{s3_bucket}/{S3_BULK_PREFIX}/ --recursive --region {REGION}")
 
 
 if __name__ == "__main__":

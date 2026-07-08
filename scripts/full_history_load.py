@@ -39,7 +39,10 @@ ENVIRONMENT = "dev"
 TABLE_PREFIX = f"investment-{ENVIRONMENT}"
 
 BULK_START = datetime(2021, 7, 1)
-S3_BUCKET = f"investment-config-{boto3.client('sts').get_caller_identity()['Account']}" if False else "investment-dev-config-YOUR_ACCOUNT_ID"
+def _get_account_id() -> str:
+    return boto3.client("sts", region_name=REGION).get_caller_identity()["Account"]
+
+S3_BUCKET = f"investment-{ENVIRONMENT}-config-{_get_account_id()}"
 S3_BULK_PREFIX = "bulk-data"
 
 
