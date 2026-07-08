@@ -3,8 +3,8 @@
 | 項目 | 内容 |
 |---|---|
 | ドキュメントID | 03_database_design |
-| バージョン | 1.2 |
-| 最終更新 | 2026-06-24 |
+| バージョン | 1.3 |
+| 最終更新 | 2026-07-09 |
 | ステータス | ドラフト |
 
 ---
@@ -244,3 +244,34 @@
 - `01_requirements.md`
 - `02_basic_design.md`
 - `04_infrastructure_design.md`
+
+---
+
+## 9. 初期データ投入記録（2026年7月）
+
+### 9.1 概要
+
+2026年7月8〜9日に、J-Quants Bulk APIを使用して全期間の履歴データをDynamoDBへ一括投入した。
+投入スクリプト：`scripts/full_history_load.py`（`jquantsapi.ClientV2.download_bulk_by_endpoint()` を使用）
+
+### 9.2 投入内容
+
+| テーブル | APIエンドポイント | 取得方法 | 対象期間 | 投入件数 |
+|---|---|---|---|---|
+| `Securities` | `/v2/equities/master` | 最新マスタ1回取得（全銘柄） | 2026-07-08時点の最新 | 4,437件 |
+| `Fundamentals` | `/v2/fins/summary`（Bulk） | 月次CSV.gz（60ヶ月分） | 2021-07 〜 2026-06 | 91,137件 |
+| `PriceHistory` | `/v2/equities/bars/daily`（Bulk） | 月次CSV.gz（60ヶ月分） | 2021-07 〜 2026-06 | 5,261,006件 |
+
+- 202607（2026年7月分）はBulkファイル未生成のため正常スキップ（月末締め後に順次公開される）
+- `Fundamentals` は重複レコード（同一ticker・disc_date）を除去してから投入
+
+### 9.3 Bulk API について
+
+J-Quants Light プラン以上で利用可能な `/v2/bulk/get?endpoint=<ep>&date=<YYYYMM>` エンドポイント。
+1リクエストで当該月の全銘柄・全日付データを圧縮CSV（`.csv.gz`）として取得できる。
+個別エンドポイント（`/v2/equities/bars/daily?code=XXXXX`）を銘柄数分コールするよりも大幅に効率的。
+
+### 9.4 週次差分更新との関係
+
+初期投入以降は `lambda-ingest`（Step Functions 週次バッチ）が差分更新を担当する。
+Bulk APIではなく、個別エンドポイントで直近週の新着データを取得してDynamoDBに追記・上書きする設計。
