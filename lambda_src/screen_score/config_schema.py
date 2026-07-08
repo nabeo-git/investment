@@ -4,11 +4,11 @@ from pydantic import BaseModel, model_validator
 class ScreeningConfig(BaseModel):
     # バフェット定量フィルタ
     min_roe: float = 0.15
-    min_roe_years: int = 4           # 5年中何年ROE基準を満たすか
+    min_roe_years: int = 3           # 5年中何年ROE基準を満たすか
     min_eps_cagr: float = 0.0        # EPS CAGR下限（連続赤字なし）
-    min_cfo_quality: float = 0.70    # CFO/純利益 5年平均 下限
-    max_debt_to_earnings: float = 4.0  # (総資産-純資産)/純利益 上限
-    max_margin_decline: float = -0.02  # 営業利益率 年間変化率の下限
+    min_cfo_quality: float = 0.60    # CFO/純利益 5年平均 下限
+    max_debt_to_earnings: float = 5.0  # (総資産-純資産)/純利益 上限
+    max_margin_decline: float = -0.03  # 営業利益率 年間変化率の下限
     min_history_years: int = 3         # 必要最低限のFYデータ年数
     # 基本フィルタ
     max_unit_price_jpy: int = 100000

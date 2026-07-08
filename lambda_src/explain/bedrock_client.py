@@ -169,7 +169,7 @@ class BedrockClient:
 
     def _default_scores(self) -> dict:
         return {
-            "moat": 5, "circle": 5, "sincerity": 5,
-            "capital_alloc": 5, "enthusiasm": 5,
-            "total": 5.0, "summary": "",
+            "moat": 0, "circle": 0, "sincerity": 0,
+            "capital_alloc": 0, "enthusiasm": 0,
+            "total": 0.0, "summary": "テキスト情報なし",
         }
