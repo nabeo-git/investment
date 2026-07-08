@@ -116,6 +116,11 @@ resource "aws_iam_role_policy" "explain" {
       },
       {
         Effect   = "Allow"
+        Action   = ["dynamodb:BatchWriteItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]
+        Resource = [var.dynamodb_table_arns["candidates"]]
+      },
+      {
+        Effect   = "Allow"
         Action   = ["dynamodb:GetItem"]
         Resource = [var.dynamodb_table_arns["securities"]]
       },

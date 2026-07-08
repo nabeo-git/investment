@@ -50,7 +50,8 @@ function Build-Lambda($name) {
     # S3経由でLambda更新
     $funcName = "investment-dev-" + $name.Replace("_", "-")
     $s3Key = "lambda-deploy/${name}.zip"
-    $bucket = "investment-dev-config-YOUR_ACCOUNT_ID"
+    $accountId = aws sts get-caller-identity --query "Account" --output text
+    $bucket = "investment-dev-config-$accountId"
 
     aws s3 cp $zip "s3://$bucket/$s3Key" --region ap-northeast-1 | Out-Null
     $ts = aws lambda update-function-code `
