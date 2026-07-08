@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | ドキュメントID | 03_database_design |
-| バージョン | 1.1 |
+| バージョン | 1.2 |
 | 最終更新 | 2026-06-24 |
 | ステータス | ドラフト |
 
@@ -41,7 +41,7 @@
 ## 3. テーブル詳細
 
 ### 3.1 `Securities`（銘柄マスタ）
-> ソース：J-Quants `Listed Issue Master` API（`/v2/listed/info`）
+> ソース：J-Quants `Equities Master` API（`/v2/equities/master`）
 
 | 属性 | 型 | キー | API元フィールド | 説明 |
 |---|---|---|---|---|
@@ -66,7 +66,7 @@
 - **注意**：`Date` はマスタ取得日時であり上場日ではない。上場日は別途取得要。
 
 ### 3.2 `PriceHistory`（株価ヒストリカル）
-> ソース：J-Quants `Stock Prices (OHLC)` API（`/v2/prices/daily_quotes`）
+> ソース：J-Quants `Equities Bars Daily` API（`/v2/equities/bars/daily`）
 
 | 属性 | 型 | キー | API元フィールド | 説明 |
 |---|---|---|---|---|
@@ -90,7 +90,7 @@
 - **注意**：前場/後場別（M*/A*プレフィックス列）はPremium限定。Phase1では日通しデータのみ保管。
 
 ### 3.3 `Fundamentals`（財務・配当データ）
-> ソース：J-Quants `Financial Data` API（`/v2/fins/statements`）  
+> ソース：J-Quants `Financial Summary` API（`/v2/fins/summary`）  
 > **全プランで取得可能。PER/PBRは直接提供されないため、EPS・BPS + 当日終値から計算する。**
 
 | 属性 | 型 | キー | API元フィールド | 説明 |

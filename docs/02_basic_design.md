@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 |---|---|
 | ドキュメントID | 02_basic_design |
-| バージョン | 1.4 |
+| バージョン | 1.5 |
 | 最終更新 | 2026-06-24 |
 | ステータス | ドラフト |
 
@@ -28,11 +28,11 @@
         ↓
 [5] Ranking          : 上位N銘柄抽出、予算内組合せ
         ↓
-[6] Explanation      : Bedrock（Claude Sonnet 4.6）でRAG＋説明文生成
+[6] Explanation      : Bedrock（Amazon Nova Pro）でRAG＋説明文生成
         ↓
-[7] Publishing       : MarkdownレポートをGoogle Driveに配置
+[7] Publishing       : MarkdownレポートをS3に保管 → Slack通知（Incoming Webhook）
         ↓
-[8] Notification     : SNS経由でメール通知
+[8] Notification     : Slack + SNS経由でメール通知（二重通知）
         ↓
 [9] Logging          : 提示履歴をDynamoDBに記録
 ```
@@ -53,13 +53,13 @@ lambda-ingest  lambda-screen-  lambda-explain  lambda-publish
                score
    ↓               ↓               ↓               ↓
 DynamoDB        DynamoDB        Bedrock          S3 (reports)
-(Securities,    (Candidates)    (Claude Sonnet   Google Drive
- PriceHistory,                   4.6, us-east-1)  SNS → Email
+(Securities,    (Candidates)    (Amazon Nova     Slack Webhook
+ PriceHistory,                   Pro, us-east-1)  SNS → Email
  Fundamentals)
        ↑
 S3 (config.yaml) ← 全Lambdaが起動時読み込み
        ↑
-Secrets Manager ← J-Quants認証 / Google Drive Service Account Key
+Secrets Manager ← J-Quants認証 / Slack Webhook URL
        ↑
 CloudWatch Logs (全Lambda) → Metric Filter (Error) → SNS
 ```
@@ -68,7 +68,7 @@ CloudWatch Logs (全Lambda) → Metric Filter (Error) → SNS
 | リソース | リージョン | 理由 |
 |---|---|---|
 | メイン全体 | ap-northeast-1 | レイテンシ・データ主権 |
-| Bedrock (Claude Sonnet 4.6) | us-east-1 | モデル提供リージョン |
+| Bedrock (Amazon Nova Pro) | us-east-1 | モデル提供リージョン |
 
 ---
 
@@ -81,7 +81,7 @@ CloudWatch Logs (全Lambda) → Metric Filter (Error) → SNS
 | `lambda-ingest` | J-Quants APIから取得しDynamoDB保管。欠損フラグ設定・リトライ | Python 3.12 | 15分 | 512MB |
 | `lambda-screen-score` | DynamoDBから読み出し→スクリーニング→スコアリング→候補保存 | Python 3.12 | 5分 | 1024MB |
 | `lambda-explain` | 候補銘柄ごとにIR/決算をRetrieval→Bedrock呼出→Markdown生成 | Python 3.12 | 15分 | 512MB |
-| `lambda-publish` | レポートをS3保存→Google Drive PUT→SNS publish | Python 3.12 | 5分 | 512MB |
+| `lambda-publish` | レポートをS3保存→Slack Webhook POST→SNS publish | Python 3.12 | 5分 | 512MB |
 
 ### 3.2 共通事項
 - 言語：Python 3.12（boto3、yfinance等のエコシステム）
@@ -190,7 +190,7 @@ portfolio:    # Phase1は静的、Phase2でDB化
       amount_jpy: 200000
 
 explanation:
-  bedrock_model_id: anthropic.claude-sonnet-4-6-20260101-v1:0
+  bedrock_model_id: amazon.nova-pro-v1:0
   bedrock_region: us-east-1
   max_tokens: 4000
   temperature: 0.2
@@ -264,7 +264,8 @@ ErrorHandler:
 ### 7.1 ファイル形式
 - Markdown（`.md`）
 - ファイル名：`investment_report_YYYYMMDD.md`
-- Google Drive配置先：`/InvestmentReports/` フォルダ（サービスアカウントに共有設定）
+- S3保管先：`s3://investment-reports-{env}/reports/investment_report_YYYYMMDD.md`
+- Slack通知：Incoming Webhook URLへレポートサマリ＋S3署名付きURL（7日間有効）をPOST
 
 ### 7.2 レポート構造（出力イメージ）
 ```markdown
@@ -453,7 +454,7 @@ prompt_context = {
 | 外部API一時障害 | Lambda内で3回リトライ（指数バックオフ）。それでも失敗ならStep Functions側で3回 |
 | データ欠損 | 欠損フラグを立てて続行（スコア計算時に該当銘柄を除外） |
 | Bedrock呼出失敗 | 該当銘柄の説明を空欄で続行、SNS通知 |
-| Drive PUT失敗 | S3にレポート保管済みのためバッチ完了は維持、SNS通知でリカバリ促す |
+| Slack通知失敗 | S3にレポート保管済みのためバッチ完了は維持、SNS通知でリカバリ促す |
 
 ### 8.2 モニタリング
 - 各Lambda：CloudWatch Logs（構造化JSON）
@@ -467,7 +468,7 @@ prompt_context = {
 
 | 項目 | 対策 |
 |---|---|
-| 認証情報 | Secrets Manager（J-Quants認証、Google Driveサービスアカウント鍵） |
+| 認証情報 | Secrets Manager（J-Quants認証、Slack Webhook URL） |
 | IAM | Lambdaごとに最小権限ロール（テーブル別read/write） |
 | 通信 | 全AWS API通信はTLS。J-Quants/Drive APIもHTTPS |
 | データ暗号化 | DynamoDB暗号化（AWSマネージドKMS）、S3 SSE-S3 |
@@ -525,14 +526,19 @@ lambda-ingest 起動
   ↓
 RunLogs から前回 ingest の成功日時を取得
   ↓
-J-Quants REST API V2: GET /v2/prices/daily_quotes
-  パラメータ: from = 前回取得日 + 1日
-             to   = バッチ実行日
+前回取得日 + 1日 〜 バッチ実行日の営業日リストを生成（通常5日間）
+  ↓
+営業日ごとにループ（通常5回）:
+  GET /v2/equities/bars/daily?date=YYYYMMDD
+  → 全銘柄の1日分株価を一括取得
+  ※ date 単日指定のみ全銘柄取得可。from/to 範囲指定は code 必須のため不可
   ↓
 取得データを PriceHistory に BatchWriteItem（追加のみ・上書きなし）
   ↓
 RunLogs に今回の取得範囲・件数を記録
 ```
+
+> **API制約**：`/v2/equities/bars/daily` は `code`（銘柄コード）または `date`（単日）のいずれか必須。銘柄指定なしで複数日分を一括取得することはできない。週次更新は営業日単位でループする。
 
 ### 10.3 データ削除の方針
 

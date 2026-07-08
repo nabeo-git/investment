@@ -3,8 +3,8 @@
 | 項目 | 内容 |
 |---|---|
 | ドキュメントID | 04_infrastructure_design |
-| バージョン | 1.0 |
-| 最終更新 | 2026-06-23 |
+| バージョン | 1.1 |
+| 最終更新 | 2026-06-24 |
 | ステータス | ドラフト |
 
 ---
@@ -20,7 +20,7 @@
 | 用途 | リージョン |
 |---|---|
 | メイン全体 | `ap-northeast-1` |
-| Bedrock | `us-east-1`（Claude Sonnet 4.6提供地） |
+| Bedrock | `us-east-1`（Amazon Nova Pro提供リージョン） |
 
 ### 1.3 採用しないもの
 - EC2、ECS、API Gateway、CloudFront：要件に不要
@@ -57,7 +57,7 @@ DynamoDB       DynamoDB        Bedrock          S3 reports
                 S3 (config bucket)
                        ↑
                 Secrets Manager
-                (J-Quants / Google Drive SA)
+                (J-Quants / Slack Webhook URL)
 ```
 
 ### 2.2 利用サービス一覧
@@ -69,8 +69,8 @@ DynamoDB       DynamoDB        Bedrock          S3 reports
 | Step Functions（標準WF） | オーケストレーション | <1円 |
 | DynamoDB（6テーブル） | データ保管 | 無料枠内（0円） |
 | S3（config・reports） | 設定/レポート保管 | <1円 |
-| Bedrock（Claude Sonnet 4.6） | 説明生成 | 〜30円（週1回×10銘柄） |
-| Secrets Manager | 認証情報 | 〜80円（2シークレット × $0.40） |
+| Bedrock（Amazon Nova Pro） | 説明生成 | 〜30円（週1回×10銘柄） |
+| Secrets Manager | 認証情報（J-Quants / Slack Webhook） | 〜80円（2シークレット × $0.40） |
 | EventBridge Scheduler | 週次起動 | 無料枠内 |
 | SNS（メール通知） | 通知 | 無料枠内 |
 | CloudWatch Logs | ログ | 無料枠内 |
@@ -162,8 +162,39 @@ terraform {
 | `stepfunctions` | state machine定義（リトライ・Catch込） |
 | `eventbridge` | Schedulerで週次起動 |
 | `sns` | alerts/notifications Topic、email subscription |
-| `secrets` | J-Quants認証、Drive SA Key（値は手動投入想定） |
+| `secrets` | J-Quants認証、Slack Webhook URL（値は手動投入想定） |
 | `iam` | Lambdaごとの最小権限ロール |
+
+### 3.4 AWSリソースタグ設計
+
+全リソースに以下の共通タグを付与する。**コスト配分タグとして `Project` を有効化することで、AWS Cost Explorerでシステム単位のコスト集計が可能になる。**
+
+| タグキー | 値 | 目的 |
+|---|---|---|
+| `Project` | `InvestmentSystem` | コスト集計・リソース識別 |
+| `Environment` | `dev` / `prod` | 環境別コスト分離 |
+| `ManagedBy` | `Terraform` | 管理方法の明示 |
+
+#### Terraformでのデフォルトタグ設定
+
+```hcl
+# versions.tf（またはprovider設定）
+provider "aws" {
+  region = "ap-northeast-1"
+
+  default_tags {
+    tags = {
+      Project     = "InvestmentSystem"
+      Environment = var.environment   # "dev" or "prod"
+      ManagedBy   = "Terraform"
+    }
+  }
+}
+```
+
+`default_tags` を使うと、このプロバイダ経由で作成した全リソースに自動でタグが付与される。個別リソースに追加タグを付ける場合は `tags` ブロックで上書き・追加可能。
+
+> **Cost Explorerでの集計手順（初回のみ）**：AWS コンソール → Billing → Cost Allocation Tags → `Project` タグをアクティベート（反映まで24時間）。
 
 ---
 
@@ -195,7 +226,7 @@ terraform {
 - dynamodb:Query
   Resource: Candidates, Fundamentals
 - bedrock:InvokeModel
-  Resource: arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-6-*
+  Resource: arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0
 - s3:GetObject (config)
 - s3:PutObject (reports bucket)
 - logs:*
@@ -206,7 +237,7 @@ terraform {
 - s3:GetObject (reports bucket)
 - s3:GetObject (config bucket)
 - secretsmanager:GetSecretValue
-  Resource: google-drive-sa-key
+  Resource: slack-webhook-url
 - sns:Publish
   Resource: investment-notifications topic
 - dynamodb:UpdateItem
@@ -235,7 +266,7 @@ terraform {
 | Secret名 | 種別 | 内容 | 投入方法 |
 |---|---|---|---|
 | `investment/jquants-api-key` | String | J-Quants V2 APIキー（ダッシュボードで発行） | 手動（AWS CLI） |
-| `investment/google-drive-sa-key` | JSON | GCPサービスアカウント鍵JSON | 手動（AWS CLI） |
+| `investment/slack-webhook-url` | String | Slack Incoming Webhook URL | 手動（AWS CLI） |
 
 > **V2 API注意**：2025年12月以降の新規登録はV2（APIキー方式）のみ。旧方式の `{mail, password, refresh_token}` JSON形式は使用しないこと。
 
@@ -280,7 +311,7 @@ aws s3 cp config.yaml s3://investment-config-dev/config.yaml
 
 ### 7.2 コスト最適化オプション
 - Secrets Manager → SSM Parameter Store SecureString に変更：**約80円削減**
-- Bedrock Claude Sonnet 4.6 → Claude Haiku 4.5：**約20円削減**（精度トレードオフ）
+- Bedrock Amazon Nova Pro → Amazon Nova Lite：**約20円削減**（精度トレードオフ）
 - 上記2つ実施で **月10〜20円程度** まで圧縮可能
 
 ---
@@ -307,7 +338,7 @@ terraform apply tfplan
 
 # 4. Secrets / configを手動投入
 aws secretsmanager create-secret --name investment/jquants-api-key --secret-string "your-v2-api-key"
-aws secretsmanager create-secret --name investment/google-drive-sa-key --secret-string @sa-key.json
+aws secretsmanager create-secret --name investment/slack-webhook-url --secret-string "https://hooks.slack.com/services/..."
 aws s3 cp config.yaml s3://investment-config-dev/config.yaml
 
 # 5. SNSメール購読の確認メールに承認

@@ -1,0 +1,64 @@
+version: "1.0"
+
+# -----------------------------------------------------------
+# スクリーニング条件（全てここで変更可能、Lambda再デプロイ不要）
+# -----------------------------------------------------------
+screening:
+  max_unit_price_jpy: 100000       # 単元購入額上限（円）
+  min_dividend_yield: 0.03         # 配当利回り下限
+  min_equity_ratio: 0.40           # 自己資本比率下限
+  max_per: 20.0                    # PER上限（倍）
+  min_daily_volume: 1000           # 出来高下限（株/日）
+  exclude_existing_tickers: true   # 既保有銘柄を候補から除外
+
+# -----------------------------------------------------------
+# スコアリング重み（合計 1.0）
+# -----------------------------------------------------------
+scoring:
+  weights:
+    dividend_continuity: 0.20   # 配当継続性（連続増配年数・利回り）
+    valuation: 0.30             # 割安度（PER・PBR）
+    financial_health: 0.50      # 財務健全性（自己資本比率・CFO）
+
+# -----------------------------------------------------------
+# 候補生成
+# -----------------------------------------------------------
+candidates:
+  top_n: 10                        # 全体ランキング時の上位N銘柄（sector_mode=false時）
+  monthly_budget_jpy: 100000       # 月次予算（円）
+  sector_mode: true                # 業種別ランキングを有効化
+  sector_classification: "17"      # "17" or "33"
+  per_sector: 2                    # 各業種から選出する銘柄数
+
+# -----------------------------------------------------------
+# データソース
+# -----------------------------------------------------------
+data_sources:
+  jquants:
+    enabled: true
+    plan: "light"                  # free / light / standard / premium
+  edinet:
+    enabled: false                 # Phase2で有効化
+  fred:
+    enabled: false                 # Phase2
+  edgar:
+    enabled: false                 # Phase2
+
+# -----------------------------------------------------------
+# 対象資産クラス
+# -----------------------------------------------------------
+asset_classes:
+  jp_stock: true
+  us_stock: false    # Phase2
+  etf: false
+  reit: false
+
+# -----------------------------------------------------------
+# 通知
+# -----------------------------------------------------------
+notification:
+  slack:
+    enabled: true
+    mention: ""          # メンションしたい場合は "<@USERID>" 等
+  email:
+    enabled: true

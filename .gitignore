@@ -1,4 +1,79 @@
+# ──────────────────────────────
+# Secrets
+# ──────────────────────────────
 .claude/
 *.env
-*.tfvars
 secrets/
+APIKey
+
+# ──────────────────────────────
+# Terraform
+# ──────────────────────────────
+*.tfvars
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+
+# ──────────────────────────────
+# Lambda: pip-installed packages を除外
+# lambda_src 以下は全除外 → 自作ソースのみ un-ignore
+# ──────────────────────────────
+lambda_src/**
+
+# ingest
+!lambda_src/ingest/handler.py
+!lambda_src/ingest/config_loader.py
+!lambda_src/ingest/config_schema.py
+!lambda_src/ingest/dynamo_writer.py
+!lambda_src/ingest/jquants_fetcher.py
+!lambda_src/ingest/requirements.txt
+
+# screen_score
+!lambda_src/screen_score/handler.py
+!lambda_src/screen_score/config_loader.py
+!lambda_src/screen_score/config_schema.py
+!lambda_src/screen_score/screener.py
+!lambda_src/screen_score/scorer.py
+!lambda_src/screen_score/requirements.txt
+
+# explain
+!lambda_src/explain/handler.py
+!lambda_src/explain/config_loader.py
+!lambda_src/explain/config_schema.py
+!lambda_src/explain/bedrock_client.py
+!lambda_src/explain/requirements.txt
+
+# publish
+!lambda_src/publish/handler.py
+!lambda_src/publish/config_loader.py
+!lambda_src/publish/config_schema.py
+!lambda_src/publish/requirements.txt
+
+# ──────────────────────────────
+# Build artifacts
+# ──────────────────────────────
+**/.build/
+*.zip
+
+# ──────────────────────────────
+# Data / scratch
+# ──────────────────────────────
+sampledata/
+poc/
+
+# ──────────────────────────────
+# Python
+# ──────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.python-version
+
+# ──────────────────────────────
+# OS
+# ──────────────────────────────
+.DS_Store
+Thumbs.db
