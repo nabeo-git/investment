@@ -3,21 +3,18 @@ from pydantic import BaseModel, model_validator
 
 class ScreeningConfig(BaseModel):
     max_unit_price_jpy: int = 100000
-    min_dividend_yield: float = 0.03
-    min_equity_ratio: float = 0.40
-    max_per: float = 20.0
     min_daily_volume: int = 1000
     exclude_existing_tickers: bool = True
 
 
 class ScoringWeights(BaseModel):
-    dividend_continuity: float = 0.20
-    valuation: float = 0.30
-    financial_health: float = 0.50
+    roe_stability: float = 0.40
+    growth_quality: float = 0.35
+    financial_solidity: float = 0.25
 
     @model_validator(mode="after")
     def check_sum(self):
-        total = self.dividend_continuity + self.valuation + self.financial_health
+        total = self.roe_stability + self.growth_quality + self.financial_solidity
         if abs(total - 1.0) > 0.01:
             raise ValueError(f"scoring.weights の合計が 1.0 になっていません（合計={total}）")
         return self
@@ -25,6 +22,8 @@ class ScoringWeights(BaseModel):
 
 class ScoringConfig(BaseModel):
     weights: ScoringWeights = ScoringWeights()
+    qualitative_weight: float = 0.60
+    quantitative_weight: float = 0.40
 
 
 class CandidatesConfig(BaseModel):
@@ -39,9 +38,16 @@ class ExplanationConfig(BaseModel):
     temperature: float = 0.2
 
 
+class QualitativeConfig(BaseModel):
+    edinet_enabled: bool = True
+    ir_scraping_enabled: bool = True
+    dimensions: list = ["moat", "circle", "sincerity", "capital_alloc", "enthusiasm"]
+
+
 class Config(BaseModel):
     version: str = "1.0"
     screening: ScreeningConfig = ScreeningConfig()
     scoring: ScoringConfig = ScoringConfig()
     candidates: CandidatesConfig = CandidatesConfig()
     explanation: ExplanationConfig = ExplanationConfig()
+    qualitative: QualitativeConfig = QualitativeConfig()

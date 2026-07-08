@@ -1,34 +1,63 @@
 version: "1.0"
 
 # -----------------------------------------------------------
-# スクリーニング条件（全てここで変更可能、Lambda再デプロイ不要）
+# スクリーニング条件（バフェット基準）
+# 全てここで変更可能、Lambda 再デプロイ不要
 # -----------------------------------------------------------
 screening:
-  max_unit_price_jpy: 100000       # 単元購入額上限（円）
-  min_dividend_yield: 0.03         # 配当利回り下限
-  min_equity_ratio: 0.40           # 自己資本比率下限
-  max_per: 20.0                    # PER上限（倍）
-  min_daily_volume: 1000           # 出来高下限（株/日）
-  exclude_existing_tickers: true   # 既保有銘柄を候補から除外
+  # バフェット定量フィルタ
+  min_roe: 0.15               # ROE下限（15%）
+  min_roe_years: 4            # 5年中何年ROE基準を満たすか
+  min_eps_cagr: 0.0           # EPS CAGR下限（連続赤字なし）
+  min_cfo_quality: 0.70       # CFO/純利益 5年平均 下限
+  max_debt_to_earnings: 4.0   # (総資産-純資産)/純利益 上限（4年分以内）
+  max_margin_decline: -0.02   # 営業利益率 年間変化率の下限（-2%/年以上の悪化で除外）
+  min_history_years: 3        # 必要最低限のFYデータ年数
+  # 基本フィルタ
+  max_unit_price_jpy: 100000  # 単元購入額上限（円）
+  min_daily_volume: 1000      # 出来高下限（株/日）
+  exclude_existing_tickers: true
 
 # -----------------------------------------------------------
-# スコアリング重み（合計 1.0）
+# スコアリング重み（定量3軸、合計 1.0）
 # -----------------------------------------------------------
 scoring:
   weights:
-    dividend_continuity: 0.20   # 配当継続性（連続増配年数・利回り）
-    valuation: 0.30             # 割安度（PER・PBR）
-    financial_health: 0.50      # 財務健全性（自己資本比率・CFO）
+    roe_stability: 0.40       # ROE安定性（平均÷(1+標準偏差)）
+    growth_quality: 0.35      # 成長の質（EPS CAGR × CFO品質）
+    financial_solidity: 0.25  # 財務盤石さ（負債倍率逆数 × 自己資本比率）
+  qualitative_weight: 0.60    # 最終スコアにおける定性スコアの比重
+  quantitative_weight: 0.40
+
+# -----------------------------------------------------------
+# バリュエーション（安全域）
+# -----------------------------------------------------------
+valuation:
+  margin_of_safety_threshold: 0.25  # 25%以上の割安で「買い候補」
+  conservative_per_cap: 20.0        # 許容PER上限（保守的見積もり）
 
 # -----------------------------------------------------------
 # 候補生成
 # -----------------------------------------------------------
 candidates:
-  top_n: 10                        # 全体ランキング時の上位N銘柄（sector_mode=false時）
-  monthly_budget_jpy: 100000       # 月次予算（円）
-  sector_mode: true                # 業種別ランキングを有効化
-  sector_classification: "17"      # "17" or "33"
-  per_sector: 2                    # 各業種から選出する銘柄数
+  top_n: 10
+  monthly_budget_jpy: 100000
+  sector_mode: true
+  sector_classification: "17"
+  per_sector: 2
+
+# -----------------------------------------------------------
+# 定性分析
+# -----------------------------------------------------------
+qualitative:
+  edinet_enabled: true
+  ir_scraping_enabled: true
+  dimensions:
+    - moat           # 経済的なお堀（ブランド・価格支配力）
+    - circle         # 能力の輪（ビジネスの明確さ・理解可能性）
+    - sincerity      # 経営者の誠実さ（正直さ・一貫性）
+    - capital_alloc  # 資本配分の合理性（株主目線）
+    - enthusiasm     # 成長への熱意（顧客・製品への語り）
 
 # -----------------------------------------------------------
 # データソース
@@ -36,20 +65,20 @@ candidates:
 data_sources:
   jquants:
     enabled: true
-    plan: "light"                  # free / light / standard / premium
+    plan: "light"
   edinet:
-    enabled: false                 # Phase2で有効化
+    enabled: true
   fred:
-    enabled: false                 # Phase2
+    enabled: false  # Phase2
   edgar:
-    enabled: false                 # Phase2
+    enabled: false  # Phase2
 
 # -----------------------------------------------------------
 # 対象資産クラス
 # -----------------------------------------------------------
 asset_classes:
   jp_stock: true
-  us_stock: false    # Phase2
+  us_stock: false  # Phase2
   etf: false
   reit: false
 
@@ -59,6 +88,6 @@ asset_classes:
 notification:
   slack:
     enabled: true
-    mention: ""          # メンションしたい場合は "<@USERID>" 等
+    mention: ""
   email:
     enabled: true

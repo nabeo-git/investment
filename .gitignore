@@ -47,6 +47,8 @@ lambda_src/**
 !lambda_src/explain/config_loader.py
 !lambda_src/explain/config_schema.py
 !lambda_src/explain/bedrock_client.py
+!lambda_src/explain/edinet_client.py
+!lambda_src/explain/ir_scraper.py
 !lambda_src/explain/requirements.txt
 
 # publish

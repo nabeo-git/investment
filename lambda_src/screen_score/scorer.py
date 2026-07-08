@@ -1,79 +1,100 @@
 import logging
-from decimal import Decimal
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_ZERO = Decimal("0")
-_ONE = Decimal("1")
 
-
-def _safe_div(a, b) -> Decimal:
+def _safe_float(v, default: float = 0.0) -> float:
     try:
-        if b is None or b == _ZERO:
-            return _ZERO
-        return Decimal(str(a)) / Decimal(str(b))
-    except Exception:
-        return _ZERO
+        f = float(v)
+        return f if f == f else default
+    except (TypeError, ValueError):
+        return default
 
 
-def _normalize(values: list[Decimal]) -> list[Decimal]:
-    """min-max正規化して0〜1に変換。全て同値なら0.5を返す。"""
+def _normalize(values: list[float]) -> list[float]:
+    """min-max 正規化して 0〜1 に変換。全て同値なら 0.5 を返す。"""
     if not values:
         return []
     mn = min(values)
     mx = max(values)
     if mx == mn:
-        return [Decimal("0.5")] * len(values)
+        return [0.5] * len(values)
     return [(v - mn) / (mx - mn) for v in values]
 
 
 class Scorer:
-    def score(self, candidates: list[dict], weights) -> list[dict]:
+    def score(self, candidates: list[dict], weights, valuation_cfg) -> list[dict]:
         """
-        各銘柄のスコアを計算し score_total でソートして返す。
-        3軸スコア（dividend_continuity / valuation / financial_health）を
-        min-max正規化後に加重平均。
+        3軸スコア（ROE安定性・成長の質・財務盤石さ）を min-max 正規化後に加重平均。
+        バリュエーションステータスを付与し、score_quantitative を計算して返す。
         """
         if not candidates:
             return []
 
-        w_div = Decimal(str(weights.dividend_continuity))
-        w_val = Decimal(str(weights.valuation))
-        w_fin = Decimal(str(weights.financial_health))
+        w_roe = _safe_float(weights.roe_stability)
+        w_growth = _safe_float(weights.growth_quality)
+        w_fin = _safe_float(weights.financial_solidity)
 
-        # --- 配当継続性スコア（配当利回り）---
-        div_yields = [c.get("div_yield") or _ZERO for c in candidates]
-        norm_div = _normalize(div_yields)
-
-        # --- 割安度スコア（PBR逆数：低PBR=割安）---
-        pbr_values = []
+        # ── ROE 安定性スコア: 5年ROE平均 / (1 + 標準偏差) ──
+        roe_scores = []
         for c in candidates:
-            close = c.get("close") or _ZERO
-            bps = c.get("bps") or _ZERO
-            pbr_values.append(_safe_div(close, bps) if bps > _ZERO else Decimal("999"))
-        # PBRは低い方が良いので逆数で正規化
-        inv_pbr = [_safe_div(_ONE, v) if v > _ZERO else _ZERO for v in pbr_values]
-        norm_val = _normalize(inv_pbr)
+            roe_vals = []
+            for r in c.get("annual_records", []):
+                np_ = _safe_float(r.get("net_profit"))
+                eq = _safe_float(r.get("equity"))
+                if eq > 0:
+                    roe_vals.append(np_ / eq)
+            if not roe_vals:
+                roe_scores.append(0.0)
+            elif len(roe_vals) == 1:
+                roe_scores.append(max(0.0, roe_vals[0]))
+            else:
+                avg = sum(roe_vals) / len(roe_vals)
+                std = (sum((r - avg) ** 2 for r in roe_vals) / len(roe_vals)) ** 0.5
+                roe_scores.append(max(0.0, avg / (1 + std)))
 
-        # --- 財務健全性スコア（自己資本比率）---
-        eq_ratios = [c.get("equity_ratio") or _ZERO for c in candidates]
-        norm_fin = _normalize(eq_ratios)
+        # ── 成長の質スコア: EPS CAGR × CFO品質 ──
+        growth_scores = []
+        for c in candidates:
+            eps_cagr = _safe_float(c.get("eps_cagr"), 0.0)
+            cfo_q = _safe_float(c.get("cfo_quality"), 0.0)
+            growth_scores.append(max(0.0, eps_cagr * cfo_q))
+
+        # ── 財務盤石さスコア: 負債倍率逆数 × 自己資本比率 ──
+        solidity_scores = []
+        for c in candidates:
+            debt_mul = _safe_float(c.get("debt_multiple"), 10.0)
+            eq_ratio = _safe_float(c.get("equity_ratio"), 0.0)
+            inv_debt = 1.0 / max(debt_mul, 0.1)
+            solidity_scores.append(inv_debt * eq_ratio)
+
+        norm_roe = _normalize(roe_scores)
+        norm_growth = _normalize(growth_scores)
+        norm_fin = _normalize(solidity_scores)
 
         scored = []
         for i, c in enumerate(candidates):
-            score_total = (
-                w_div * norm_div[i]
-                + w_val * norm_val[i]
+            quant = (
+                w_roe * norm_roe[i]
+                + w_growth * norm_growth[i]
                 + w_fin * norm_fin[i]
             )
             scored.append({
                 **c,
-                "score_dividend_continuity": float(round(norm_div[i], 4)),
-                "score_valuation": float(round(norm_val[i], 4)),
-                "score_financial_health": float(round(norm_fin[i], 4)),
-                "score_total": float(round(score_total, 4)),
+                "score_roe_stability": round(norm_roe[i], 4),
+                "score_growth_quality": round(norm_growth[i], 4),
+                "score_financial_solidity": round(norm_fin[i], 4),
+                "score_quantitative": round(quant, 4),
+                "score_total": round(quant, 4),  # 定性スコア追加前の暫定値
             })
 
         scored.sort(key=lambda x: x["score_total"], reverse=True)
-        logger.info(f"スコアリング: {len(scored)}銘柄 top={scored[0]['ticker']} score={scored[0]['score_total']:.4f}")
+        if scored:
+            top = scored[0]
+            logger.info(
+                f"スコアリング: {len(scored)}銘柄 "
+                f"top={top['ticker']} quant={top['score_quantitative']:.4f} "
+                f"val={top.get('valuation_status','?')}"
+            )
         return scored

@@ -1,2 +1,4 @@
 pydantic>=2.0
 PyYAML>=6.0
+requests>=2.31
+beautifulsoup4>=4.12

@@ -115,7 +115,7 @@ def handler(event: dict, context) -> dict:
 
         passed = screener.screen(config, tickers)
         # 全体スコアリング（min-max正規化のベースは全通過銘柄）
-        scored = scorer.score(passed, config.scoring.weights)
+        scored = scorer.score(passed, config.scoring.weights, config.valuation)
 
         run_date = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d")
 
@@ -138,23 +138,37 @@ def handler(event: dict, context) -> dict:
                 "rank": c["rank"],
                 "sector": c.get("sector", ""),
                 "sector_rank": c.get("sector_rank", 1),
+                # スコア
                 "score_total": c["score_total"],
-                "score_dividend_continuity": c["score_dividend_continuity"],
-                "score_valuation": c["score_valuation"],
-                "score_financial_health": c["score_financial_health"],
+                "score_quantitative": c["score_quantitative"],
+                "score_roe_stability": c["score_roe_stability"],
+                "score_growth_quality": c["score_growth_quality"],
+                "score_financial_solidity": c["score_financial_solidity"],
+                # バリュエーション
+                "valuation_status": c.get("valuation_status", "unknown"),
+                "margin_of_safety": str(c.get("margin_of_safety", "")) if c.get("margin_of_safety") is not None else "",
+                "intrinsic_value": str(c.get("intrinsic_value", "")) if c.get("intrinsic_value") is not None else "",
+                # 株価・財務スナップショット
                 "close": str(c.get("close", "")),
-                "div_yield": str(c.get("div_yield", "")),
-                "equity_ratio": str(c.get("equity_ratio", "")),
+                "eps": str(c.get("eps", "")) if c.get("eps") is not None else "",
+                "eps_cagr": str(round(c["eps_cagr"], 4)) if c.get("eps_cagr") is not None else "",
+                "cfo_quality": str(round(c["cfo_quality"], 4)) if c.get("cfo_quality") is not None else "",
+                "debt_multiple": str(round(c["debt_multiple"], 2)) if c.get("debt_multiple") is not None else "",
+                "equity_ratio": str(c.get("equity_ratio", "")) if c.get("equity_ratio") is not None else "",
+                "roe_years": c.get("roe_years", 0),
                 "disc_date": c.get("disc_date", ""),
+                "fy_end": c.get("fy_end", ""),
             })
 
         _batch_write(ddb_client, t_candidates, records)
 
+        buy_count = sum(1 for c in top_candidates if c.get("valuation_status") == "buy")
         summary = {
             "screened_in": len(passed),
             "candidates": len(top_candidates),
             "sector_mode": cfg_cand.sector_mode,
             "top_ticker": top_candidates[0]["ticker"] if top_candidates else None,
+            "buy_status_count": buy_count,
         }
         t_run_logs.update_item(
             Key={"run_id": run_id, "stage": "screen_score"},
