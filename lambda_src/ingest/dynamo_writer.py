@@ -87,3 +87,23 @@ class DynamoWriter:
                 ":e": error,
             }),
         )
+
+    def get_last_ingest_date(self) -> str | None:
+        """最後に成功した ingest の日付（YYYYMMDD）を返す。未記録なら None。"""
+        resp = self.client.get_item(
+            TableName=self.t_run_logs,
+            Key=_serialize({"run_id": "__state__", "stage": "ingest"}),
+        )
+        item = resp.get("Item")
+        if not item:
+            return None
+        return item.get("last_success_date", {}).get("S")
+
+    def set_last_ingest_date(self, date_yyyymmdd: str) -> None:
+        """ingest 成功時に最終実行日を記録する。"""
+        self.client.update_item(
+            TableName=self.t_run_logs,
+            Key=_serialize({"run_id": "__state__", "stage": "ingest"}),
+            UpdateExpression="SET last_success_date = :d",
+            ExpressionAttributeValues={":d": {"S": date_yyyymmdd}},
+        )

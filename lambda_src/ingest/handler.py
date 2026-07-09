@@ -54,7 +54,9 @@ def handler(event: dict, context) -> dict:
         if mode == "initial_load":
             dates = _dates_in_range(event.get("from_date"), event.get("to_date"))
         else:
-            dates = _last_n_trading_dates(5)
+            # 前回成功日の翌営業日から今日まで全日取得（数ヶ月停止後の再開を考慮）
+            last_date = writer.get_last_ingest_date()
+            dates = _dates_since(last_date)
 
         total_prices = 0
         for d in dates:
@@ -91,6 +93,8 @@ def handler(event: dict, context) -> dict:
             "dates": dates,
         }
         writer.log_run_complete(run_id, "ingest", summary)
+        if mode == "incremental" and dates:
+            writer.set_last_ingest_date(dates[-1])  # 最後に取得した日付を記録
         logger.info(json.dumps({"run_id": run_id, "result": "success", **summary}))
 
         return {"run_id": run_id, "status": "success", **summary}
@@ -99,6 +103,25 @@ def handler(event: dict, context) -> dict:
         logger.error(f"Ingest失敗: {e}", exc_info=True)
         writer.log_run_error(run_id, "ingest", str(e))
         raise
+
+
+def _dates_since(last_date_yyyymmdd: str | None) -> list[str]:
+    """前回成功日の翌営業日から昨日までの全営業日を返す。
+    未記録（初回）の場合は直近5営業日にフォールバック。"""
+    if not last_date_yyyymmdd:
+        return _last_n_trading_dates(5)
+    jst = timezone(timedelta(hours=9))
+    yesterday = (datetime.now(jst) - timedelta(days=1)).date()
+    start = datetime.strptime(last_date_yyyymmdd, "%Y%m%d").date() + timedelta(days=1)
+    if start > yesterday:
+        return []  # 前回が昨日以降 → 取得不要
+    dates = []
+    cur = start
+    while cur <= yesterday:
+        if cur.weekday() < 5:
+            dates.append(cur.strftime("%Y%m%d"))
+        cur += timedelta(days=1)
+    return dates
 
 
 def _last_n_trading_dates(n: int) -> list[str]:
