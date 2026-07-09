@@ -60,6 +60,7 @@ module "iam" {
   reports_bucket_arn  = module.s3.reports_bucket_arn
   jquants_secret_arn  = module.secrets.jquants_api_key_arn
   slack_secret_arn    = module.secrets.slack_webhook_url_arn
+  edinet_secret_arn   = module.secrets.edinet_api_key_arn
   sns_topic_arn       = module.sns.alerts_topic_arn
 }
 

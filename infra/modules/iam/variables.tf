@@ -30,6 +30,10 @@ variable "slack_secret_arn" {
   type = string
 }
 
+variable "edinet_secret_arn" {
+  type = string
+}
+
 variable "sns_topic_arn" {
   type = string
 }

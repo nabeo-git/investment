@@ -131,6 +131,11 @@ resource "aws_iam_role_policy" "explain" {
       },
       {
         Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = var.edinet_secret_arn
+      },
+      {
+        Effect   = "Allow"
         Action   = ["bedrock:InvokeModel"]
         Resource = "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0"
       },

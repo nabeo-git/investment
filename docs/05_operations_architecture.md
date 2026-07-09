@@ -274,12 +274,15 @@ IAM ポリシーで各 Lambda から当該シークレットのみ `GetSecretVal
 
 ## 6. 現状のドリフト（IaC 未適用分）
 
-| 変更内容 | 適用方法 | .tf 反映 |
+以下はすべて `.tf` に反映済み。Terraform 導入後に `terraform apply` で収束させること。  
+シークレットの**値**は Terraform 管理外（CLI または AWS Console で設定）。**定義（リソースシェル）**は `.tf` で管理する。
+
+| 変更内容 | 適用済み手段 | .tf 反映 |
 |---|---|---|
-| explain IAM: BatchWriteItem/PutItem/UpdateItem on Candidates | aws iam put-role-policy | ✅ 反映済み |
-| explain IAM: secretsmanager:GetSecretValue (EDINET key) | aws iam put-role-policy | ❌ 未反映 |
-| ingest IAM: dynamodb:GetItem | aws iam put-role-policy | ✅ 反映済み |
-| `investment-dev/edinet-api-key` シークレット作成 | aws secretsmanager create-secret | ❌ secrets/main.tf 未反映 |
+| explain IAM: BatchWriteItem/PutItem/UpdateItem on Candidates | aws iam put-role-policy | ✅ iam/main.tf |
+| explain IAM: secretsmanager:GetSecretValue (EDINET key) | aws iam put-role-policy | ✅ iam/main.tf |
+| ingest IAM: dynamodb:GetItem | aws iam put-role-policy | ✅ iam/main.tf |
+| `investment-dev/edinet-api-key` シークレット定義 | aws secretsmanager create-secret | ✅ secrets/main.tf |
 
 ---
 
