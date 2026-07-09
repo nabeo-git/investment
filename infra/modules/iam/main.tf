@@ -27,7 +27,7 @@ resource "aws_iam_role_policy" "ingest" {
     Statement = [
       {
         Effect = "Allow"
-        Action = ["dynamodb:PutItem", "dynamodb:BatchWriteItem", "dynamodb:Query", "dynamodb:UpdateItem"]
+        Action = ["dynamodb:PutItem", "dynamodb:BatchWriteItem", "dynamodb:Query", "dynamodb:UpdateItem", "dynamodb:GetItem"]
         Resource = [
           var.dynamodb_table_arns["securities"],
           var.dynamodb_table_arns["price_history"],
