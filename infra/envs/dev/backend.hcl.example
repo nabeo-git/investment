@@ -1,0 +1,6 @@
+# このファイルをコピーして backend.hcl を作成してください（.gitignore 対象）
+# cp backend.hcl.example backend.hcl
+# 各値を自分の AWS アカウントに合わせて書き換えてください
+
+bucket         = "investment-tfstate-<YOUR_ACCOUNT_ID>"
+dynamodb_table = "investment-tflock"

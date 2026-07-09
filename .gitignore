@@ -15,6 +15,7 @@ APIKey
 # Terraform
 # ──────────────────────────────
 *.tfvars
+*.hcl
 **/.terraform/
 *.tfstate
 *.tfstate.backup

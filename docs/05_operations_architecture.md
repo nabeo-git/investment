@@ -130,10 +130,10 @@ flowchart TD
 flowchart TD
     A(["インフラ変更"])
     B["infra/modules/ の .tf を編集"]
-    C["terraform init"]
+    C["terraform init\n-backend-config=backend.hcl"]
     D["terraform plan\n-var-file=terraform.tfvars"]
     E{"差分OK?"}
-    F["terraform apply"]
+    F["terraform apply\n-var-file=terraform.tfvars"]
     G["S3 tfstate 更新\nDynamoDB ロック解放"]
     H(["完了"])
 
@@ -150,9 +150,6 @@ flowchart TD
     style G fill:#2d1f52,stroke:#a78bfa,color:#ede9fe
     style H fill:#14362a,stroke:#4ade80,color:#dcfce7
 ```
-
-> **現状注意**: Terraform 未インストールのため IAM 変更は `aws iam put-role-policy` で直接適用。  
-> `iam/main.tf` には反映済みだが **tfstate とドリフトあり**。Terraform 導入時は `terraform import` が必要。
 
 ### 3-2. Lambda コード変更
 
@@ -272,21 +269,7 @@ IAM ポリシーで各 Lambda から当該シークレットのみ `GetSecretVal
 
 ---
 
-## 6. 現状のドリフト（IaC 未適用分）
-
-以下はすべて `.tf` に反映済み。Terraform 導入後に `terraform apply` で収束させること。  
-シークレットの**値**は Terraform 管理外（CLI または AWS Console で設定）。**定義（リソースシェル）**は `.tf` で管理する。
-
-| 変更内容 | 適用済み手段 | .tf 反映 |
-|---|---|---|
-| explain IAM: BatchWriteItem/PutItem/UpdateItem on Candidates | aws iam put-role-policy | ✅ iam/main.tf |
-| explain IAM: secretsmanager:GetSecretValue (EDINET key) | aws iam put-role-policy | ✅ iam/main.tf |
-| ingest IAM: dynamodb:GetItem | aws iam put-role-policy | ✅ iam/main.tf |
-| `investment-dev/edinet-api-key` シークレット定義 | aws secretsmanager create-secret | ✅ secrets/main.tf |
-
----
-
-## 7. ファイル構成
+## 6. ファイル構成
 
 ```
 investment/
@@ -317,34 +300,18 @@ investment/
 
 ---
 
-## 8. Terraform 導入手順（未導入環境向け）
+## 7. Terraform セットアップ手順
+
+→ 詳細は [README.md](../README.md#セットアップ手順) を参照。要点のみ：
 
 ```powershell
-# 1. インストール
 winget install HashiCorp.Terraform
 
-# 2. バックエンド用リソース作成（初回のみ）
-$ACCOUNT = aws sts get-caller-identity --query Account --output text
-aws s3 mb s3://investment-tfstate-$ACCOUNT --region ap-northeast-1
-aws s3api put-bucket-versioning --bucket investment-tfstate-$ACCOUNT `
-    --versioning-configuration Status=Enabled
-aws dynamodb create-table --table-name investment-tflock `
-    --attribute-definitions AttributeName=LockID,AttributeType=S `
-    --key-schema AttributeName=LockID,KeyType=HASH `
-    --billing-mode PAY_PER_REQUEST --region ap-northeast-1
+# backend.hcl を作成（.gitignore 対象）
+cp infra/envs/dev/backend.hcl.example infra/envs/dev/backend.hcl
+# backend.hcl に実際のアカウント ID を記入
 
-# 3. backend.tf の YOUR_ACCOUNT_ID を実際のアカウント ID に置換
-
-# 4. terraform.tfvars を作成（.gitignore 済み）
-# infra/envs/dev/terraform.tfvars:
-#   environment = "dev"
-#   account_id  = "304513313801"
-#   aws_region  = "ap-northeast-1"
-#   alert_email = "your@email.com"
-
-# 5. 初期化 & 適用
 cd infra/envs/dev
-terraform init
-terraform plan -var-file=terraform.tfvars
+terraform init -backend-config=backend.hcl
 terraform apply -var-file=terraform.tfvars
 ```

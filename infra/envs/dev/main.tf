@@ -8,7 +8,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "investment-tfstate-YOUR_ACCOUNT_ID"
+    # terraform init -backend-config=backend.hcl （backend.hcl は .gitignore 対象）
     key            = "envs/dev/terraform.tfstate"
     region         = "ap-northeast-1"
     dynamodb_table = "investment-tflock"
